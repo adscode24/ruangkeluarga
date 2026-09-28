@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import MemberAvatar from '@/components/family/MemberAvatar';
@@ -22,21 +22,22 @@ export default function Messages() {
 
   const loadMessages = async () => {
     if (!active || !user || !member) return;
-    const all = await base44.entities.DirectMessage.filter({ family_id: member.family_id }, 'created_date', 500);
+    const { data } = await supabase.from('direct_messages').select('*').eq('family_id', member.family_id).order('created_at', { ascending: true }).limit(500);
+    const all = data || [];
     const convo = all.filter(
       (m) => (m.sender_id === user.id && m.receiver_id === active.user_id) || (m.sender_id === active.user_id && m.receiver_id === user.id)
     );
     setMessages(convo);
     const unread = convo.filter((m) => m.receiver_id === user.id && !m.read_at);
     if (unread.length) {
-      await Promise.all(unread.map((m) => base44.entities.DirectMessage.update(m.id, { read_at: new Date().toISOString() })));
+      await Promise.all(unread.map((m) => supabase.from('direct_messages').update({ read_at: new Date().toISOString() }).eq('id', m.id)));
     }
   };
 
   useEffect(() => {
     loadMessages();
-    const unsub = base44.entities.DirectMessage.subscribe(() => loadMessages());
-    return () => unsub();
+    const ch = supabase.channel('dm-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => loadMessages()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [active, user]);
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function Messages() {
     if (!text.trim() || !active) return;
     const content = text.trim();
     setText('');
-    await base44.entities.DirectMessage.create({
+    await supabase.from('direct_messages').insert({
       family_id: member.family_id,
       sender_id: user.id,
       receiver_id: active.user_id,
@@ -60,7 +61,7 @@ export default function Messages() {
   };
 
   if (active) {
-    const sorted = [...messages].sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
+    const sorted = [...messages].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     return (
       <div className="flex flex-col h-[calc(100dvh-5rem)]">
         <div className="flex items-center gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-border bg-card">
@@ -79,7 +80,7 @@ export default function Messages() {
                 <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${mine ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-card border border-border rounded-bl-md'}`}>
                   <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
                   <span className={`text-[10px] ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                    {new Date(m.created_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                     {mine && (m.read_at ? ' · Dibaca' : ' · Terkirim')}
                   </span>
                 </div>

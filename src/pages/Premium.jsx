@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -29,8 +29,8 @@ export default function Premium() {
   const subscribe = async (planId) => {
     setLoading(planId);
     try {
-      const { data } = await base44.functions.invoke('createCheckoutSession', { plan: planId });
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('createCheckoutSession', { body: { plan: planId } });
+      if (error) throw error;
       if (data?.url) window.location.href = data.url;
     } catch (e) {
       toast({ variant: 'destructive', title: 'Gagal', description: e.message });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ROOM_LABELS, ROOM_EMOJI, canAccessRoom, isParent } from '@/lib/familyConstants';
@@ -20,15 +20,15 @@ export default function RoomChat() {
 
   const loadMessages = async () => {
     if (!roomId) return;
-    const msgs = await base44.entities.RoomMessage.filter({ room_id: roomId }, 'created_date', 200);
-    setMessages(msgs);
+    const { data } = await supabase.from('room_messages').select('*').eq('room_id', roomId).order('created_at', { ascending: true }).limit(200);
+    setMessages(data || []);
     setLoading(false);
   };
 
   useEffect(() => {
     loadMessages();
-    const unsub = base44.entities.RoomMessage.subscribe(() => loadMessages());
-    return () => unsub();
+    const ch = supabase.channel('roommsg-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'room_messages' }, () => loadMessages()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [roomId]);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function RoomChat() {
     if (!text.trim()) return;
     const content = text.trim();
     setText('');
-    await base44.entities.RoomMessage.create({
+    await supabase.from('room_messages').insert({
       family_id: member.family_id,
       room_id: roomId,
       sender_id: user.id,
@@ -65,12 +65,12 @@ export default function RoomChat() {
   };
 
   const togglePin = async (msg) => {
-    await base44.entities.RoomMessage.update(msg.id, { is_pinned: !msg.is_pinned });
+    await supabase.from('room_messages').update({ is_pinned: !msg.is_pinned }).eq('id', msg.id);
     loadMessages();
   };
 
   const pinned = messages.filter((m) => m.is_pinned);
-  const sorted = [...messages].sort((a, b) => new Date(a.created_date) - new Date(b.created_date));
+  const sorted = [...messages].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5rem)]">
@@ -106,7 +106,7 @@ export default function RoomChat() {
                 <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
                 <div className={`flex items-center gap-1.5 mt-0.5 ${mine ? 'justify-end' : ''}`}>
                   <span className={`text-[10px] ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                    {new Date(m.created_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   {isParent(member.family_role) && (
                     <button onClick={() => togglePin(m)} className="opacity-40 hover:opacity-100">

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -19,8 +19,8 @@ export default function WeeklyReport() {
     setLoading(true);
     setResult(null);
     try {
-      const { data } = await base44.functions.invoke('generateWeeklyReport', {});
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('generateWeeklyReport', { body: {} });
+      if (error) throw error;
       setResult(data);
     } catch (e) {
       toast({ variant: 'destructive', title: 'Gagal', description: e.message });

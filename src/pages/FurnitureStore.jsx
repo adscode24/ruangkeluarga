@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -30,8 +30,8 @@ export default function FurnitureStore() {
 
   const load = async () => {
     if (!member) return;
-    const f = await base44.entities.Furniture.filter({ family_id: member.family_id }, '-created_date', 100);
-    setFurniture(f);
+    const { data } = await supabase.from('furniture').select('*').eq('family_id', member.family_id).order('created_at', { ascending: false }).limit(100);
+    setFurniture(data || []);
   };
 
   useEffect(() => { load(); }, [member]);
@@ -41,10 +41,10 @@ export default function FurnitureStore() {
   const buy = async (item) => {
     setBuying(item.type);
     try {
-      const { data } = await base44.functions.invoke('buyFurniture', {
-        type: item.type, label: item.label, room: 'ruang_keluarga', cost: item.cost,
+      const { error } = await supabase.functions.invoke('buyFurniture', {
+        body: { type: item.type, label: item.label, room: 'ruang_keluarga', cost: item.cost },
       });
-      if (data?.error) throw new Error(data.error);
+      if (error) throw error;
       toast({ title: `${item.label} dibeli!`, description: `-${item.cost} poin` });
       load(); refresh();
     } catch (e) {

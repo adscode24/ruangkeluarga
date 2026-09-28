@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -23,14 +23,14 @@ export default function Wallet() {
 
   const loadTxns = async () => {
     if (!member) return;
-    const txns = await base44.entities.PointTransaction.filter({ family_id: member.family_id }, '-created_date', 100);
-    setTransactions(txns);
+    const { data } = await supabase.from('point_transactions').select('*').eq('family_id', member.family_id).order('created_at', { ascending: false }).limit(100);
+    setTransactions(data || []);
   };
 
   useEffect(() => {
     loadTxns();
-    const unsub = base44.entities.PointTransaction.subscribe(() => loadTxns());
-    return () => unsub();
+    const ch = supabase.channel('txns-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'point_transactions' }, () => loadTxns()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member) return null;
@@ -41,9 +41,8 @@ export default function Wallet() {
 
   const handleApprove = async (t, decision) => {
     try {
-      const markCompleted = t.type === 'redeemed_for_cash';
-      const { data } = await base44.functions.invoke('approvePointTransaction', { transaction_id: t.id, decision, mark_completed: markCompleted });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('approvePointTransaction', { body: { transaction_id: t.id, action: decision } });
+      if (error) throw error;
       toast({ title: decision === 'approved' ? 'Disetujui' : 'Ditolak' });
       loadTxns(); refresh();
     } catch (e) {

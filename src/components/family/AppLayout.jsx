@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, Navigate } from 'react-router-dom';
 import { FamilyProvider, useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { isChild } from '@/lib/familyConstants';
 import { Home as HomeIcon, MessageCircle, Wallet, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -21,12 +21,7 @@ function BottomNav() {
       <div className="max-w-md mx-auto flex">
         {items.map((i) => {
           const active = i.to === '/' ? pathname === '/' : pathname.startsWith(i.to);
-          return (
-            <Link key={i.to} to={i.to} className={cn('flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-bold transition-colors', active ? 'text-primary' : 'text-muted-foreground')}>
-              <i.icon className={cn('h-5 w-5', active && 'scale-110')} style={{ transition: 'transform 0.15s' }} />
-              {i.label}
-            </Link>
-          );
+          return <Link key={i.to} to={i.to} className={cn('flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-bold transition-colors', active ? 'text-primary' : 'text-muted-foreground')}><i.icon className={cn('h-5 w-5', active && 'scale-110')} style={{ transition: 'transform 0.15s' }} />{i.label}</Link>;
         })}
       </div>
     </nav>
@@ -39,10 +34,10 @@ function LockChecker() {
 
   useEffect(() => {
     if (!member || !isChild(member.family_role)) return;
-    const load = () => base44.entities.ScreenTimeLimit.filter({ member_id: member.id }).then((l) => setLimit(l[0] || null)).catch(() => {});
+    const load = () => supabase.from('screen_time_limits').select('*').eq('member_id', member.id).then(({ data }) => setLimit(data?.[0] || null));
     load();
-    const unsub = base44.entities.ScreenTimeLimit.subscribe(load);
-    return unsub;
+    const ch = supabase.channel('limits-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'screen_time_limits' }, load).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member || !isChild(member.family_role) || !limit) return null;
@@ -55,23 +50,9 @@ function LockChecker() {
 
 function LayoutInner() {
   const { loading, user, member } = useFamily();
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-4 border-accent/30 border-t-primary rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="w-8 h-8 border-4 border-accent/30 border-t-primary rounded-full animate-spin" /></div>;
   if (!user?.family_id || !member) return <Navigate to="/onboarding" replace />;
-  return (
-    <div className="min-h-screen bg-background pb-20">
-      <div className="max-w-md mx-auto">
-        <AnimatedOutlet />
-      </div>
-      <BottomNav />
-      <LockChecker />
-    </div>
-  );
+  return <div className="min-h-screen bg-background pb-20"><div className="max-w-md mx-auto"><AnimatedOutlet /></div><BottomNav /><LockChecker /></div>;
 }
 
 export default function AppLayout() {

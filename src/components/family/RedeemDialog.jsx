@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function RedeemDialog({ open, onOpenChange, balance, onDone }) {
@@ -20,17 +20,15 @@ export default function RedeemDialog({ open, onOpenChange, balance, onDone }) {
     if (p > balance) return toast({ variant: 'destructive', title: 'Saldo poin tidak cukup' });
     setSaving(true);
     try {
-      const { data } = await base44.functions.invoke('requestRedemption', { points: p, type, description });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('requestRedemption', { body: { points: p, type, description } });
+      if (error) throw error;
       toast({ title: 'Permintaan dikirim!', description: 'Menunggu persetujuan orang tua.' });
       onOpenChange(false);
       setPoints(''); setDescription(''); setType('redeemed_for_cash');
       onDone?.();
     } catch (e) {
       toast({ variant: 'destructive', title: 'Gagal', description: e.message });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (
@@ -46,10 +44,7 @@ export default function RedeemDialog({ open, onOpenChange, balance, onDone }) {
             <Label>Tukar dengan</Label>
             <Select value={type} onValueChange={setType}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="redeemed_for_cash">Uang Tunai</SelectItem>
-                <SelectItem value="redeemed_for_screen_time">Waktu Layar Tambahan</SelectItem>
-              </SelectContent>
+              <SelectContent><SelectItem value="redeemed_for_cash">Uang Tunai</SelectItem><SelectItem value="redeemed_for_screen_time">Waktu Layar Tambahan</SelectItem></SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
@@ -59,15 +54,9 @@ export default function RedeemDialog({ open, onOpenChange, balance, onDone }) {
               <p className="text-xs text-accent font-bold">≈ Rp {(parseInt(points) * 100).toLocaleString('id-ID')} <span className="font-normal text-muted-foreground">(1 poin = Rp 100)</span></p>
             )}
           </div>
-          <div className="space-y-1.5">
-            <Label>Catatan (opsional)</Label>
-            <Input placeholder="misal: Mau ditukar jadi uang jajan" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
+          <div className="space-y-1.5"><Label>Catatan (opsional)</Label><Input placeholder="misal: Mau ditukar jadi uang jajan" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
-          <Button onClick={handle} disabled={saving}>{saving ? 'Memproses...' : 'Kirim Permintaan'}</Button>
-        </DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button onClick={handle} disabled={saving}>{saving ? 'Memproses...' : 'Kirim Permintaan'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

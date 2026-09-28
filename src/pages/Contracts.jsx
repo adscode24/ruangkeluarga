@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,14 +20,14 @@ export default function Contracts() {
 
   const load = async () => {
     if (!member) return;
-    const c = await base44.entities.FamilyContract.filter({ family_id: member.family_id }, '-created_date', 50);
-    setContracts(c);
+    const { data } = await supabase.from('family_contracts').select('*').eq('family_id', member.family_id).order('created_at', { ascending: false }).limit(50);
+    setContracts(data || []);
   };
 
   useEffect(() => {
     load();
-    const unsub = base44.entities.FamilyContract.subscribe(() => load());
-    return () => unsub();
+    const ch = supabase.channel('contracts-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'family_contracts' }, () => load()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member) return null;
@@ -37,7 +37,8 @@ export default function Contracts() {
       const updates = { [type]: true };
       const otherAgreed = type === 'agreed_by_parents' ? contract.agreed_by_children : contract.agreed_by_parents;
       if (otherAgreed) updates.signed_at = new Date().toISOString();
-      await base44.entities.FamilyContract.update(contract.id, updates);
+      const { error } = await supabase.from('family_contracts').update(updates).eq('id', contract.id);
+      if (error) throw error;
       toast({ title: 'Tanda tangan tercatat!' });
       load();
     } catch (e) {
@@ -108,7 +109,7 @@ function CreateContractDialog({ open, onOpenChange, onDone }) {
     if (!cleanRules.length) return toast({ variant: 'destructive', title: 'Tambahkan minimal 1 aturan' });
     setSaving(true);
     try {
-      await base44.entities.FamilyContract.create({
+      const { error } = await supabase.from('family_contracts').insert({
         family_id: member.family_id,
         title: title.trim(),
         rules: cleanRules,
@@ -117,6 +118,7 @@ function CreateContractDialog({ open, onOpenChange, onDone }) {
         created_by_name: member.full_name,
         is_active: true,
       });
+      if (error) throw error;
       toast({ title: 'Kontrak dibuat!' });
       onOpenChange(false);
       setTitle(''); setRules(['']);

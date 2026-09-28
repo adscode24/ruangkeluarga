@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,14 +26,14 @@ export default function ScreenTime() {
   const loadData = useCallback(async () => {
     if (!member) return;
     try {
-      const [limitRes, sessionRes] = await Promise.all([
-        base44.entities.ScreenTimeLimit.filter({ family_id: member.family_id }),
+      const [{ data: limitData }, { data: sessionData }] = await Promise.all([
+        supabase.from('screen_time_limits').select('*').eq('family_id', member.family_id),
         isChild(member.family_role)
-          ? base44.entities.ScreenTimeSession.filter({ member_id: member.id, status: 'active' })
-          : Promise.resolve([])
+          ? supabase.from('screen_time_sessions').select('*').eq('member_id', member.id).eq('status', 'active')
+          : Promise.resolve({ data: [] }),
       ]);
-      setLimits(limitRes);
-      setActiveSession(sessionRes[0] || null);
+      setLimits(limitData || []);
+      setActiveSession(sessionData?.[0] || null);
     } catch {
       // ignore
     } finally {
@@ -43,8 +43,8 @@ export default function ScreenTime() {
 
   useEffect(() => {
     loadData();
-    const unsub = base44.entities.ScreenTimeSession.subscribe(() => loadData());
-    return unsub;
+    const ch = supabase.channel('sessions-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'screen_time_sessions' }, () => loadData()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [loadData]);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function ScreenTime() {
         }
         const send = (loc) => {
           if (loc) { payload.location_lat = loc.lat; payload.location_lng = loc.lng; }
-          base44.functions.invoke('reportDeviceData', payload).catch(() => {});
+          supabase.functions.invoke('reportDeviceData', { body: payload }).catch(() => {});
         };
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
@@ -95,8 +95,8 @@ export default function ScreenTime() {
   const handleStart = async () => {
     setStarting(true);
     try {
-      const { data } = await base44.functions.invoke('startScreenTimeSession', {});
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('startScreenTimeSession', { body: {} });
+      if (error) throw error;
       toast({ title: 'Sesi dimulai!', description: `Sisa waktu: ${data.remaining_minutes} menit` });
       loadData();
     } catch (e) {
@@ -109,8 +109,8 @@ export default function ScreenTime() {
   const handleStop = async () => {
     setStopping(true);
     try {
-      const { data } = await base44.functions.invoke('endScreenTimeSession', { session_id: activeSession.id });
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('endScreenTimeSession', { body: { session_id: activeSession.id } });
+      if (error) throw error;
       toast({ title: 'Sesi berakhir', description: `Durasi: ${data.duration_minutes} menit` });
       setActiveSession(null);
       loadData();
@@ -124,8 +124,8 @@ export default function ScreenTime() {
 
   const handleForceStop = async (sessionId) => {
     try {
-      const { data } = await base44.functions.invoke('endScreenTimeSession', { session_id: sessionId, forced_by_name: member.full_name });
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('endScreenTimeSession', { body: { session_id: sessionId, forced_by_name: member.full_name } });
+      if (error) throw error;
       toast({ title: 'Sesi dihentikan', description: `Durasi: ${data.duration_minutes} menit` });
       loadData();
     } catch (e) {
@@ -135,8 +135,8 @@ export default function ScreenTime() {
 
   const handleSetLimit = async (memberId, minutes) => {
     try {
-      const { data } = await base44.functions.invoke('updateScreenTimeLimit', { member_id: memberId, daily_limit_minutes: minutes });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('updateScreenTimeLimit', { body: { member_id: memberId, daily_limit_minutes: minutes } });
+      if (error) throw error;
       toast({ title: 'Batas diperbarui', description: `${minutes} menit/hari` });
       loadData();
     } catch (e) {

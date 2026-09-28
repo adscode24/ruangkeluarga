@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,14 +22,14 @@ export default function Tasks() {
 
   const loadTasks = async () => {
     if (!member) return;
-    const t = await base44.entities.FamilyTask.filter({ family_id: member.family_id }, '-created_date', 100);
-    setTasks(t);
+    const { data } = await supabase.from('family_tasks').select('*').eq('family_id', member.family_id).order('created_at', { ascending: false }).limit(100);
+    setTasks(data || []);
   };
 
   useEffect(() => {
     loadTasks();
-    const unsub = base44.entities.FamilyTask.subscribe(() => loadTasks());
-    return () => unsub();
+    const ch = supabase.channel('tasks-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'family_tasks' }, () => loadTasks()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member) return null;
@@ -42,8 +42,8 @@ export default function Tasks() {
 
   const handleAction = async (task, action) => {
     try {
-      const { data } = await base44.functions.invoke('completeTask', { task_id: task.id, action });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('completeTask', { body: { task_id: task.id, action } });
+      if (error) throw error;
       toast({ title: action === 'complete' ? 'Tugas diselesaikan!' : action === 'approve' ? 'Disetujui — poin diberikan!' : 'Tugas dikembalikan' });
       loadTasks();
     } catch (e) {
@@ -131,16 +131,17 @@ function CreateTaskDialog({ open, onOpenChange, children, onDone }) {
     setSaving(true);
     try {
       const assigneeMember = children.find((c) => c.id === assignee);
-      await base44.entities.FamilyTask.create({
+      const { error } = await supabase.from('family_tasks').insert({
         family_id: member.family_id,
         title: title.trim(),
         description: description.trim(),
         points_reward: parseInt(points) || 10,
-        assigned_to_id: assignee || '',
-        assigned_to_name: assigneeMember?.full_name || '',
+        assigned_to_id: assignee || null,
+        assigned_to_name: assigneeMember?.full_name || null,
         status: 'pending',
         created_by_name: member.full_name,
       });
+      if (error) throw error;
       toast({ title: 'Tugas dibuat!' });
       onOpenChange(false);
       setTitle(''); setDescription(''); setPoints('10'); setAssignee('');

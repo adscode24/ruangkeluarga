@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,14 +36,14 @@ export default function ModeSettings() {
 
   const load = async () => {
     if (!member) return;
-    const s = await base44.entities.FamilySchedule.filter({ family_id: member.family_id }, '-created_date', 50);
-    setSchedules(s);
+    const { data } = await supabase.from('family_schedules').select('*').eq('family_id', member.family_id).order('created_at', { ascending: false }).limit(50);
+    setSchedules(data || []);
   };
 
   useEffect(() => {
     load();
-    const unsub = base44.entities.FamilySchedule.subscribe(() => load());
-    return () => unsub();
+    const ch = supabase.channel('schedules-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'family_schedules' }, () => load()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member) return null;
@@ -60,12 +60,12 @@ export default function ModeSettings() {
   }
 
   const toggleActive = async (s) => {
-    await base44.entities.FamilySchedule.update(s.id, { is_active: !s.is_active });
+    await supabase.from('family_schedules').update({ is_active: !s.is_active }).eq('id', s.id);
     load();
   };
 
   const remove = async (s) => {
-    await base44.entities.FamilySchedule.delete(s.id);
+    await supabase.from('family_schedules').delete().eq('id', s.id);
     toast({ title: 'Jadwal dihapus' });
     load();
   };
@@ -73,8 +73,8 @@ export default function ModeSettings() {
   const applyNow = async () => {
     setApplying(true);
     try {
-      const { data } = await base44.functions.invoke('applyFamilyMode', { family_id: member.family_id });
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('applyFamilyMode', { body: { family_id: member.family_id } });
+      if (error) throw error;
       if (data.applied) toast({ title: `Mode ${data.label} diterapkan`, description: `${data.moved} anak dipindahkan` });
       else toast({ title: 'Tidak ada jadwal yang cocok saat ini' });
     } catch (e) {
@@ -152,7 +152,7 @@ function CreateScheduleDialog({ open, onOpenChange, onDone }) {
     if (!days.length) return toast({ variant: 'destructive', title: 'Pilih minimal 1 hari' });
     setSaving(true);
     try {
-      await base44.entities.FamilySchedule.create({
+      const { error } = await supabase.from('family_schedules').insert({
         family_id: member.family_id,
         mode, label: label.trim() || MODE_LABELS[mode],
         start_time: startTime, end_time: endTime, days,
@@ -161,6 +161,7 @@ function CreateScheduleDialog({ open, onOpenChange, onDone }) {
         is_active: true,
         created_by_name: member.full_name,
       });
+      if (error) throw error;
       toast({ title: 'Jadwal mode dibuat!' });
       onOpenChange(false);
       onDone?.();

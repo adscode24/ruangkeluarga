@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { isChild, isParent } from '@/lib/familyConstants';
 import { Clock, Lock, AlertTriangle, Play } from 'lucide-react';
 
@@ -13,13 +13,9 @@ export default function ScreenTimeWidget() {
 
   useEffect(() => {
     if (!member) return;
-    base44.entities.ScreenTimeLimit.filter({ family_id: member.family_id })
-      .then(setLimits)
-      .catch(() => {});
+    supabase.from('screen_time_limits').select('*').eq('family_id', member.family_id).then(({ data }) => setLimits(data || []));
     if (isChild(member.family_role)) {
-      base44.entities.ScreenTimeSession.filter({ member_id: member.id, status: 'active' })
-        .then((s) => setActiveSession(s[0] || null))
-        .catch(() => {});
+      supabase.from('screen_time_sessions').select('*').eq('member_id', member.id).eq('status', 'active').then(({ data }) => setActiveSession(data?.[0] || null));
     }
   }, [member]);
 

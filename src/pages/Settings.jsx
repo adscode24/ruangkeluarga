@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
+import { auth } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +23,7 @@ export default function Settings() {
   if (!member) return null;
 
   const logout = async () => {
-    await base44.auth.logout();
+    await auth.logout();
     window.location.href = '/login';
   };
 
@@ -86,8 +87,8 @@ function EditNameDialog({ open, onOpenChange, currentName, onDone }) {
     if (!name.trim()) return toast({ variant: 'destructive', title: 'Nama wajib diisi' });
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('updateProfile', { full_name: name.trim() });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('updateProfile', { body: { full_name: name.trim() } });
+      if (error) throw error;
       toast({ title: 'Nama diperbarui!' });
       onDone();
       onOpenChange(false);
@@ -121,10 +122,10 @@ function AccountDeleteDialog({ open, onOpenChange }) {
   const handle = async () => {
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('deleteMyAccount', {});
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('deleteMyAccount', { body: {} });
+      if (error) throw error;
       toast({ title: 'Akun dihapus' });
-      await base44.auth.logout();
+      await auth.logout();
       window.location.href = '/login';
     } catch (e) {
       toast({ variant: 'destructive', title: 'Gagal', description: e.message });
@@ -154,8 +155,8 @@ function DeleteDialog({ open, onOpenChange, familyName }) {
   const handle = async () => {
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('deleteFamilyData', { confirm: confirm.trim() });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('deleteFamilyData', { body: { confirm: confirm.trim() } });
+      if (error) throw error;
       toast({ title: 'Data keluarga dihapus' });
       window.location.href = '/onboarding';
     } catch (e) {

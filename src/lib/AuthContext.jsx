@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
-import { supabase, isSupabaseConfigured } from '@/api/supabaseClient';
+import { supabase } from '@/api/supabaseClient';
+import { auth } from '@/api/auth';
 
 const AuthContext = createContext();
 
@@ -17,7 +17,7 @@ export const AuthProvider = ({ children }) => {
     setIsLoadingAuth(true);
     setAuthError(null);
     try {
-      const currentUser = await base44.auth.me();
+      const currentUser = await auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
     } catch {
@@ -35,26 +35,10 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkUserAuth();
-    if (!isSupabaseConfigured || !supabase) return undefined;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        base44.auth.me().then((u) => {
-          setUser(u);
-          setIsAuthenticated(true);
-          setAuthChecked(true);
-          setIsLoadingAuth(false);
-        }).catch(() => {
-          setUser(null);
-          setIsAuthenticated(false);
-          setIsLoadingAuth(false);
-          setAuthChecked(true);
-        });
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-        setIsLoadingAuth(false);
-        setAuthChecked(true);
-      }
+        auth.me().then((u) => { setUser(u); setIsAuthenticated(true); setAuthChecked(true); setIsLoadingAuth(false); }).catch(() => { setUser(null); setIsAuthenticated(false); setIsLoadingAuth(false); setAuthChecked(true); });
+      } else { setUser(null); setIsAuthenticated(false); setIsLoadingAuth(false); setAuthChecked(true); }
     });
     return () => subscription.unsubscribe();
   }, [checkUserAuth]);
@@ -62,31 +46,14 @@ export const AuthProvider = ({ children }) => {
   const logout = (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
-    base44.auth.logout(shouldRedirect ? true : undefined);
-    if (shouldRedirect && typeof window !== 'undefined') {
-      const t = setTimeout(() => { window.location.href = '/login'; }, 300);
-      void t;
-    }
+    auth.logout();
+    if (shouldRedirect && typeof window !== 'undefined') { const t = setTimeout(() => { window.location.href = '/login'; }, 300); void t; }
   };
 
-  const navigateToLogin = () => {
-    base44.auth.redirectToLogin(typeof window !== 'undefined' ? window.location.href : '/login');
-  };
+  const navigateToLogin = () => { auth.redirectToLogin(typeof window !== 'undefined' ? window.location.href : '/login'); };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isAuthenticated,
-      isLoadingAuth,
-      isLoadingPublicSettings,
-      authError,
-      appPublicSettings,
-      authChecked,
-      logout,
-      navigateToLogin,
-      checkUserAuth,
-      checkAppState,
-    }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, appPublicSettings, authChecked, logout, navigateToLogin, checkUserAuth, checkAppState }}>
       {children}
     </AuthContext.Provider>
   );
@@ -94,8 +61,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

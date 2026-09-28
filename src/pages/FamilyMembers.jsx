@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -28,14 +28,14 @@ export default function FamilyMembers() {
 
   const loadInvitations = async () => {
     if (!member) return;
-    const invs = await base44.entities.FamilyInvitation.filter({ family_id: member.family_id, status: 'pending' }, '-created_date', 50);
-    setInvitations(invs);
+    const { data } = await supabase.from('family_invitations').select('*').eq('family_id', member.family_id).eq('status', 'pending').order('created_at', { ascending: false }).limit(50);
+    setInvitations(data || []);
   };
 
   useEffect(() => {
     loadInvitations();
-    const unsub = base44.entities.FamilyInvitation.subscribe(() => loadInvitations());
-    return () => unsub();
+    const ch = supabase.channel('invitations-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'family_invitations' }, () => loadInvitations()).subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [member]);
 
   if (!member) return null;
@@ -44,8 +44,8 @@ export default function FamilyMembers() {
     if (!inviteEmail.trim()) return toast({ variant: 'destructive', title: 'Email wajib diisi' });
     setSending(true);
     try {
-      const { data } = await base44.functions.invoke('inviteMember', { email: inviteEmail.trim(), role: inviteRole });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('inviteMember', { body: { email: inviteEmail.trim(), role: inviteRole } });
+      if (error) throw error;
       toast({ title: 'Undangan terkirim!', description: `Email undangan dikirim ke ${inviteEmail.trim()}` });
       setInviteEmail('');
       loadInvitations();
@@ -172,8 +172,8 @@ function RoleChangeDialog({ member, open, onOpenChange, onDone }) {
     if (!member || !newRole) return;
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('updateMemberRole', { member_id: member.id, new_role: newRole });
-      if (data?.error) throw new Error(data.error);
+      const { error } = await supabase.functions.invoke('updateMemberRole', { body: { member_id: member.id, new_role: newRole } });
+      if (error) throw error;
       toast({ title: 'Peran diubah!', description: `${member.full_name} sekarang ${ROLE_LABELS[newRole]}` });
       onDone();
       onOpenChange(false);

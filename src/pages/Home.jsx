@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import MemberAvatar from '@/components/family/MemberAvatar';
 import LocationPicker from '@/components/family/LocationPicker';
 import VirtualHouse3D from '@/components/family/VirtualHouse3D';
@@ -25,9 +25,8 @@ export default function Home() {
 
   useEffect(() => {
     if (member && isParent(member.family_role)) {
-      base44.entities.PointTransaction.filter({ family_id: member.family_id, status: 'pending' })
-        .then((txns) => setPendingCount(txns.length))
-        .catch(() => {});
+      supabase.from('point_transactions').select('id', { count: 'exact', head: true }).eq('family_id', member.family_id).eq('status', 'pending')
+        .then(({ count }) => setPendingCount(count || 0));
     }
   }, [member]);
 

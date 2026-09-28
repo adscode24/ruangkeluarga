@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
+import { auth } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,18 +23,18 @@ export default function Onboarding() {
   const [joinForm, setJoinForm] = useState({ invite_code: '', full_name: '', family_role: 'kakak' });
 
   useEffect(() => {
-    base44.auth.me().then(async (u) => {
+    auth.me().then(async (u) => {
       if (u?.role === 'admin' && !u?.family_id) { navigate('/admin', { replace: true }); return; }
       if (u?.family_id) {
         try {
-          const members = await base44.entities.FamilyMember.filter({ user_id: u.id });
-          if (members.length > 0) { navigate('/', { replace: true }); return; }
-          await base44.auth.updateMe({ family_id: '' });
+          const { data: members } = await supabase.from('family_members').select('*').eq('user_id', u.id);
+          if (members?.length > 0) { navigate('/', { replace: true }); return; }
+          await auth.updateMe({ family_id: null });
         } catch (e) { navigate('/', { replace: true }); return; }
       }
       try {
-        const { data } = await base44.functions.invoke('checkInvitation', {});
-        if (data?.has_invitation) setInvitation(data);
+        const { data, error } = await supabase.functions.invoke('checkInvitation', { body: {} });
+        if (!error && data?.has_invitation) setInvitation(data);
       } catch (e) { /* ignore */ }
       setChecking(false);
     }).catch(() => setChecking(false));
@@ -43,8 +44,8 @@ export default function Onboarding() {
     if (!createForm.family_name.trim()) return toast({ variant: 'destructive', title: 'Nama keluarga wajib diisi' });
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('createFamily', createForm);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('createFamily', { body: createForm });
+      if (error) throw error;
       toast({ title: 'Ruang Keluarga dibuat!', description: `Kode undangan: ${data.invite_code}` });
       window.location.href = '/';
     } catch (e) {
@@ -56,8 +57,8 @@ export default function Onboarding() {
     if (!joinForm.invite_code.trim()) return toast({ variant: 'destructive', title: 'Kode undangan wajib diisi' });
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('joinFamily', joinForm);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('joinFamily', { body: joinForm });
+      if (error) throw error;
       toast({ title: 'Berhasil bergabung!' });
       window.location.href = '/';
     } catch (e) {
@@ -68,11 +69,13 @@ export default function Onboarding() {
   const handleAccept = async () => {
     setBusy(true);
     try {
-      const { data } = await base44.functions.invoke('acceptInvitation', {
-        invitation_id: invitation.invitation_id,
-        full_name: joinForm.full_name || invitation.invited_by || '',
+      const { data, error } = await supabase.functions.invoke('acceptInvitation', {
+        body: {
+          invitation_id: invitation.invitation_id,
+          full_name: joinForm.full_name || invitation.invited_by || '',
+        },
       });
-      if (data?.error) throw new Error(data.error);
+      if (error) throw error;
       toast({ title: 'Berhasil bergabung!', description: `Selamat datang di ${invitation.family_name}` });
       window.location.href = '/';
     } catch (e) {

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFamily } from '@/lib/familyContext';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
+import { auth } from '@/api/auth';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -35,8 +36,8 @@ export default function AdminDashboard() {
 
   const loadStats = async () => {
     try {
-      const { data } = await base44.functions.invoke('getAdminStats', {});
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = await supabase.functions.invoke('getAdminStats', { body: {} });
+      if (error) throw error;
       setStats(data);
     } catch (e) {
       toast({ variant: 'destructive', title: 'Gagal memuat data', description: e.message });
@@ -46,9 +47,9 @@ export default function AdminDashboard() {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const { data } = await base44.functions.invoke('adminDeleteFamily', { family_ids: selectedIds });
-      if (data?.error) throw new Error(data.error);
-      toast({ title: 'Keluarga dihapus', description: `${data.deleted} keluarga dan seluruh datanya telah dihapus.` });
+      const { error } = await supabase.functions.invoke('adminDeleteFamily', { body: { family_ids: selectedIds } });
+      if (error) throw error;
+      toast({ title: 'Keluarga dihapus', description: `${selectedIds.length} keluarga dan seluruh datanya telah dihapus.` });
       setConfirmDelete(false);
       setSelectedFamily(null);
       setSelectedIds([]);
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
     if (user?.family_id) {
       navigate('/');
     } else {
-      base44.auth.logout('/login');
+      auth.logout();
     }
   };
 

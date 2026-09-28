@@ -11,11 +11,5 @@
     "api/**/*.js": {
       "maxDuration": 30
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/apply-all-family-modes",
-      "schedule": "*/30 * * * *"
-    }
-  ]
+  }
 }
